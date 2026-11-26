@@ -1,0 +1,39 @@
+/* Nusantara Skies page: the canvas is the game; the page just frames it. */
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  background: #071018;
+  color: #eaf6ff;
+  font-family: Arial, Helvetica, sans-serif;
+}
+
+#stage {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 12px;
+}
+
+#game {
+  width: min(1280px, 100%);
+  height: auto;
+  display: block;
+  border-radius: 10px;
+  box-shadow: 0 12px 48px rgba(0, 0, 0, 0.55);
+  background: #1d6fb8;
+  cursor: crosshair;
+}
+
+#caption {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: rgba(234, 246, 255, 0.75);
+  text-align: center;
+  max-width: 1280px;
+}
