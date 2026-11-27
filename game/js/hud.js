@@ -138,7 +138,7 @@ export function drawHUD(ctx, w, h, state) {
   // --- AGL: height above the ground under the plane (what a landing needs) ---
   const groundH = terrainHeight(state, state.x, state.z);
   const agl = Math.max(0, state.y - groundH);
-  if (agl < 120 && state.screen === 'flying') {
+  if (agl < 150 && state.screen === 'flying') {
     panel(ctx, 14, 142, 218, 34);
     label(ctx, 'AGL', 26, 165);
     ctx.fillStyle = agl < 25 ? '#ffb02e' : '#ffffff';
