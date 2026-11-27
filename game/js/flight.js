@@ -18,8 +18,42 @@ export function updateFlight(state, input, dt, rng) {
     input.wheelDelta = 0;
   }
 
+  // --- Grounded: rollout, taxi and take-off --------------------------------
+  // After a landing the plane stays on the strip: it rolls out to a stop,
+  // never stalls and never crashes for being on the ground. Hold W to
+  // accelerate again; past 110 km/h it lifts off.
+  if (state.onGround) {
+    const targetSpeed = WORLD.minSpeed + state.throttle * (WORLD.cruiseSpeed - WORLD.minSpeed);
+    if (state.throttle > 0.4) {
+      state.speed += (targetSpeed - state.speed) * Math.min(1, dt * 0.55);
+    } else {
+      state.speed += (0 - state.speed) * Math.min(1, dt * 0.8);
+    }
+    state.speed = Math.max(0, Math.min(WORLD.maxSpeed, state.speed));
+    state.pitch = 0;
+    state.bank = 0;
+    state.verticalSpeed = 0;
+    const speedMs = (state.speed * 1000) / 3600;
+    const headingRad = state.heading * DEG;
+    state.x += Math.sin(headingRad) * speedMs * dt;
+    state.z += Math.cos(headingRad) * speedMs * dt;
+    // Ease onto the ground under the plane instead of snapping to it.
+    const groundY = terrainHeight(state, state.x, state.z) + 2;
+    state.y += (groundY - state.y) * Math.min(1, dt * 2);
+    if (state.throttle > 0.4 && state.speed > 110) {
+      state.onGround = false;
+      state.landed = false;
+      showMessage(state, 'Lepas landas!', 2);
+    }
+    state.elapsed += dt;
+    return;
+  }
+
   // --- Pitch and bank ------------------------------------------------------
-  const pitchTarget = (input.pitchUp ? 14 : 0) + (input.pitchDown ? -12 : 0)
+  // Keyboard pitch-down is gentle enough to land on: -8° gives about
+  // -5.7 m/s at 165 km/h, inside the gentle-landing band (was -12°, which
+  // always slammed the plane into the hard band).
+  const pitchTarget = (input.pitchUp ? 14 : 0) + (input.pitchDown ? -8 : 0)
     + (input.mouseActive ? -input.mouseY * 12 : 0);
   const bankTarget = (input.bankRight ? 32 : 0) + (input.bankLeft ? -32 : 0)
     + (input.mouseActive ? input.mouseX * 34 : 0);
@@ -35,10 +69,19 @@ export function updateFlight(state, input, dt, rng) {
   // --- Speed ---------------------------------------------------------------
   const targetSpeed = WORLD.minSpeed + state.throttle * (WORLD.cruiseSpeed - WORLD.minSpeed);
   state.speed += (targetSpeed - state.speed) * Math.min(1, dt * 0.55);
-  // Drag in a hard bank costs speed; a dive buys a little back.
-  state.speed -= Math.abs(state.bank) * 0.02 * dt * 10;
-  state.speed += Math.max(0, -state.pitch) * 0.12 * dt * 10;
+  // Drag in a hard bank costs speed; a dive buys a little back. The dive
+  // bonus is kept modest (0.15, not more): any stronger and a pitch-down
+  // descent accelerates past the gentle-landing band on its own.
+  state.speed -= Math.abs(state.bank) * 0.04 * dt * 10;
+  state.speed += Math.max(0, -state.pitch) * 0.15 * dt * 10;
   state.speed = Math.max(40, Math.min(WORLD.maxSpeed, state.speed));
+
+  // --- Crosswind eases off close to the ground, so the final approach
+  // stays correctable instead of blowing the plane off the strip.
+  const groundHere = terrainHeight(state, state.x, state.z);
+  const aglHere = Math.max(0, state.y - groundHere);
+  const windFactor = aglHere > 150 ? 1 : aglHere < 60 ? 0.5 : 0.5 + (aglHere - 60) / 180;
+  const effectiveCrosswind = state.crosswind * windFactor;
 
   // --- Heading and position --------------------------------------------------
   const turnRate = state.bank * 0.55 * (state.speed / WORLD.cruiseSpeed);
@@ -49,7 +92,7 @@ export function updateFlight(state, input, dt, rng) {
   const headingRad = state.heading * DEG;
   const forwardX = Math.sin(headingRad) * speedMs;
   const forwardZ = Math.cos(headingRad) * speedMs;
-  state.x += (forwardX + state.crosswind) * dt;
+  state.x += (forwardX + effectiveCrosswind) * dt;
   state.z += forwardZ * dt;
 
   // --- Climb / sink -----------------------------------------------------------
@@ -63,7 +106,7 @@ export function updateFlight(state, input, dt, rng) {
     state.y = WORLD.maxAltitude;
     state.pitch = Math.min(state.pitch, 0);
   }
-  if (stalled && !state.stallWarned) {
+  if (stalled && !state.onGround && !state.stallWarned) {
     state.stallWarned = true;
     showMessage(state, 'STALL! Tambah throttle!', 1.6);
   }
@@ -130,6 +173,12 @@ function landPlane(state, runway, hard) {
   state.pitch = 0;
   state.bank = 0;
   state.throttle = 0;
+  state.verticalSpeed = 0;
+  // Grounded: the plane now rolls out on the strip instead of stalling
+  // back into the runway a fraction of a second after touching down.
+  state.onGround = true;
+  // Dust puff at the touchdown point, drawn for ~1 s.
+  state.dust = { x: state.x, z: state.z, until: state.elapsed + 1.0 };
   state.fuel = WORLD.fuelTank;
   state.landed = true;
   state.landingQuality = hard ? 'keras' : 'mulus';
