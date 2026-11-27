@@ -39,9 +39,12 @@ export function makeIsland(rng, z, id) {
     // runway heading in degrees, small offset from route direction
     runwayHeading: (rng() - 0.5) * 24,
     // decorative palms / huts count, drawn from the seed
-    palms: 3 + Math.floor(rng() * 6),
+    palms: 5 + Math.floor(rng() * 5),
     seed: Math.floor(rng() * 1e9),
   };
+  // Asymmetric dome peak, derived from the island's own seed so the RNG
+  // stream (and therefore every other island, ring and cloud) stays identical.
+  island.peak = ((island.seed % 1000) / 1000 - 0.5) * 0.35;
   return island;
 }
 
