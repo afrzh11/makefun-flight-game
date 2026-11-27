@@ -1,7 +1,7 @@
 // Scene rendering for Nusantara Skies: draws the world (sky, sea, clouds,
 // islands, rings), the aircraft, the HUD and the title / pause / end
 // screens, in that order, every frame.
-import { createProjector, drawSky, drawSea, drawClouds, drawIslands, drawRings, drawCargo, drawDust } from './terrain.js';
+import { createProjector, drawSky, drawSea, drawClouds, drawIslands, drawRings, drawCargo, drawDust, drawSpeedStreaks, drawBirds } from './terrain.js';
 import { drawAircraft } from './aircraft.js';
 import { drawHUD } from './hud.js';
 
@@ -46,6 +46,8 @@ function drawWorld(ctx, w, h, state, time) {
   drawCargo(ctx, proj, state);
   drawDust(ctx, proj, state);
   drawAircraft(ctx, w, h, state, time);
+  drawSpeedStreaks(ctx, w, h, state);
+  drawBirds(ctx, w, h, state, time);
 }
 
 function drawEndScreen(ctx, w, h, state, title, lines) {
