@@ -169,6 +169,25 @@ function drawIslandShape(ctx, p, island, time) {
     ctx.ellipse(p.x - baseW * 0.01 + pk, baseY - topH + Math.max(2, topH * 0.06), baseW * 0.045, Math.max(2, topH * 0.05), 0, 0, Math.PI * 2);
     ctx.stroke();
   }
+  // Lava glow in the crater: a warm orange heart so a volcano reads as
+  // alive, not just a brown hill, even at a glance.
+  if (island.kind === 'volcano' && baseW > 40) {
+    const gx = p.x - baseW * 0.01 + pk;
+    const gy = baseY - topH + Math.max(2, topH * 0.06);
+    const gr = Math.max(4, baseW * 0.05);
+    const glow = ctx.createRadialGradient(gx, gy, 1, gx, gy, gr * 2.4);
+    glow.addColorStop(0, 'rgba(255,150,50,0.85)');
+    glow.addColorStop(0.5, 'rgba(255,90,20,0.35)');
+    glow.addColorStop(1, 'rgba(255,90,20,0)');
+    ctx.fillStyle = glow;
+    ctx.beginPath();
+    ctx.arc(gx, gy, gr * 2.4, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#ff7a26';
+    ctx.beginPath();
+    ctx.ellipse(gx, gy, baseW * 0.03, Math.max(2, topH * 0.035), 0, 0, Math.PI * 2);
+    ctx.fill();
+  }
   // Volcano smoke: soft grey puffs, low alpha, drifting up — not hard circles.
   if (island.kind === 'volcano') {
     const puff = (Math.sin(time * 0.9 + island.seed) + 1) / 2;
@@ -342,12 +361,20 @@ export function drawRings(ctx, proj, state) {
     if (r < 3) continue;
     const isNext = ring === nextCourseRing;
     const isDrop = ring.dropZone;
-    const color = isDrop ? '#ffd23e' : isNext ? '#ff9f2e' : '#37d6e0';
+    // The one target ring is bright cyan with a glow so it reads instantly
+    // as "fly through this" at a glance; every other ring stays faint, so
+    // the small circles stop reading as soap bubbles scattered over the sea.
+    const color = isDrop ? '#ffd23e' : '#37d6e0';
     ctx.save();
-    ctx.shadowColor = color;
-    ctx.shadowBlur = 18;
+    if (isDrop || isNext) {
+      ctx.shadowColor = color;
+      ctx.shadowBlur = 18;
+      ctx.lineWidth = Math.max(2, r * 0.15);
+    } else {
+      ctx.globalAlpha = 0.3;
+      ctx.lineWidth = Math.max(1.5, r * 0.06);
+    }
     ctx.strokeStyle = color;
-    ctx.lineWidth = Math.max(2, r * 0.14);
     ctx.beginPath();
     ctx.ellipse(p.x, p.y, r, r * 0.92, 0, 0, Math.PI * 2);
     ctx.stroke();
@@ -357,4 +384,50 @@ export function drawRings(ctx, proj, state) {
     ctx.ellipse(p.x, p.y, r * 0.86, r * 0.79, 0, 0, Math.PI * 2);
     ctx.fill();
   }
+}
+
+// Speed streaks at the screen edges when the plane is fast: thin white
+// lines that read as motion even in a still frame. Kept to the middle
+// band of the screen so they never cross the HUD boxes.
+export function drawSpeedStreaks(ctx, w, h, state) {
+  const speed = state.speed || 0;
+  if (speed < 180) return;
+  const strength = Math.min(1, (speed - 180) / 80);
+  ctx.save();
+  ctx.strokeStyle = 'rgba(255,255,255,' + (0.4 * strength).toFixed(2) + ')';
+  ctx.lineWidth = 2;
+  for (let i = 0; i < 10; i++) {
+    const left = i % 2 === 0;
+    const yy = 170 + ((i * 137 + state.elapsed * 300) % 380);
+    const len = 30 + (i % 3) * 22;
+    const xx = left ? 10 + (i % 3) * 14 : w - 10 - (i % 3) * 14;
+    ctx.beginPath();
+    ctx.moveTo(xx, yy);
+    ctx.lineTo(left ? xx + len : xx - len, yy + 6);
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+// A few birds drifting across the upper sky: cheap life that reads in
+// stills. Fixed lanes in the outer thirds so they never cross the centred
+// mission toast or the plane.
+export function drawBirds(ctx, w, h, state, time) {
+  const seed = state.seed || 1;
+  ctx.save();
+  ctx.strokeStyle = 'rgba(40,60,80,0.7)';
+  ctx.lineWidth = 2;
+  const lanes = [0.12, 0.88, 0.25, 0.75];
+  for (let i = 0; i < lanes.length; i++) {
+    const bx = ((lanes[i] * w + time * (6 + i * 2) + seed * 13) % (w + 160)) - 80;
+    const by = h * (0.2 + (i % 3) * 0.05);
+    const flap = Math.sin(time * 6 + i * 2) * 3;
+    const s = 7 + (i % 2) * 3;
+    ctx.beginPath();
+    ctx.moveTo(bx - s, by - flap);
+    ctx.quadraticCurveTo(bx - s * 0.4, by + 2, bx, by);
+    ctx.quadraticCurveTo(bx + s * 0.4, by + 2, bx + s, by - flap);
+    ctx.stroke();
+  }
+  ctx.restore();
 }
