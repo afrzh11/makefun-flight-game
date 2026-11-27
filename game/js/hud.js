@@ -3,6 +3,7 @@
 // damage gauges, throttle), mission objective and message toasts. Panels
 // are dark and translucent so the numbers read when the screenshot shrinks.
 import { WORLD } from './state.js';
+import { terrainHeight } from './world.js';
 
 function panel(ctx, x, y, w, h) {
   ctx.fillStyle = 'rgba(8,20,32,0.62)';
@@ -80,7 +81,7 @@ function drawAttitude(ctx, x, y, r, state) {
   ctx.clip();
   ctx.translate(x, y);
   ctx.rotate((-state.bank * Math.PI) / 180);
-  ctx.translate(0, state.pitch * 1.1);
+  ctx.translate(0, state.pitch * 1.8);
   // Sky half / ground half.
   ctx.fillStyle = '#3d9bd6';
   ctx.fillRect(-r, -r * 2, r * 2, r * 2);
@@ -134,6 +135,21 @@ export function drawHUD(ctx, w, h, state) {
   bigValue(ctx, Math.round(state.speed) + ' km/h', 26, 116,
     state.speed < 95 ? '#ff6b5e' : '#ffffff');
 
+  // --- AGL: height above the ground under the plane (what a landing needs) ---
+  const groundH = terrainHeight(state, state.x, state.z);
+  const agl = Math.max(0, state.y - groundH);
+  if (agl < 120 && state.screen === 'flying') {
+    panel(ctx, 14, 142, 218, 34);
+    label(ctx, 'AGL', 26, 165);
+    ctx.fillStyle = agl < 25 ? '#ffb02e' : '#ffffff';
+    ctx.font = 'bold 18px Arial, sans-serif';
+    ctx.textAlign = 'left';
+    ctx.fillText(Math.round(agl) + ' m', 66, 165);
+    ctx.fillStyle = '#9fd8f5';
+    ctx.font = 'bold 11px Arial, sans-serif';
+    ctx.fillText('di atas daratan', 128, 165);
+  }
+
   // --- Top-right: score / mission / timer ------------------------------------
   panel(ctx, w - 232, 12, 218, 124);
   label(ctx, 'SCORE', w - 220, 32);
@@ -152,7 +168,21 @@ export function drawHUD(ctx, w, h, state) {
   if (state.mission) {
     ctx.font = 'bold 15px Arial, sans-serif';
     ctx.textAlign = 'center';
-    const text = state.mission.text;
+    let text = state.mission.text;
+    // Landing missions: show distance to the threshold and lateral offset
+    // from the centreline, so the player can line up the final.
+    if (state.mission.type === 'land' && state.mission.island && state.screen === 'flying') {
+      const isl = state.mission.island;
+      const hdg = (isl.runwayHeading * Math.PI) / 180;
+      const dx = state.x - isl.x;
+      const dz = state.z - isl.z;
+      const along = dx * Math.sin(hdg) + dz * Math.cos(hdg);
+      const across = dx * Math.cos(hdg) - dz * Math.sin(hdg);
+      const dist = Math.max(0, Math.round(-along - WORLD.runwayLength / 2));
+      if (dist > 0) {
+        text += ' · ' + dist + ' m · ' + Math.abs(Math.round(across)) + ' m dari garis tengah';
+      }
+    }
     const tw = ctx.measureText(text).width;
     panel(ctx, w / 2 - tw / 2 - 14, 74, tw + 28, 28);
     ctx.fillStyle = '#ffffff';
@@ -185,12 +215,31 @@ export function drawHUD(ctx, w, h, state) {
   const windDir = state.crosswind >= 0 ? '→' : '←';
   ctx.fillStyle = '#9fd8f5';
   ctx.fillText('Angin ' + windDir + ' ' + Math.abs(state.crosswind).toFixed(0) + ' m/s', 214, h - 72);
-  // Stall warning.
-  if (state.speed < 95 && state.screen === 'flying') {
+  // Stall warning (never while rolling on the ground after a landing).
+  if (state.speed < 95 && state.screen === 'flying' && !state.onGround) {
     ctx.fillStyle = '#ff6b5e';
     ctx.font = 'bold 20px Arial, sans-serif';
     ctx.textAlign = 'center';
     ctx.fillText('⚠ STALL — TAMBAH THROTTLE', w / 2, h - 150);
+  }
+
+  // Flare cue on final: pull up gently when close to the ground.
+  if (state.screen === 'flying' && !state.onGround && agl < 25 && state.verticalSpeed < -1) {
+    ctx.fillStyle = '#ffb02e';
+    ctx.font = 'bold 22px Arial, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('FLARE — TARIK KE ATAS PELAN', w / 2, h - 190);
+  }
+
+  // --- Grounded prompt: how to take off again after a landing ------------------
+  if (state.screen === 'flying' && state.onGround) {
+    const text = 'Mendarat ' + (state.landingQuality || 'mulus') + ' — tekan W untuk lepas landas';
+    ctx.font = 'bold 20px Arial, sans-serif';
+    ctx.textAlign = 'center';
+    const tw = ctx.measureText(text).width;
+    panel(ctx, w / 2 - tw / 2 - 16, h * 0.58, tw + 32, 38);
+    ctx.fillStyle = '#35e05a';
+    ctx.fillText(text, w / 2, h * 0.58 + 26);
   }
 
   // --- Centre message toast ---------------------------------------------------------
