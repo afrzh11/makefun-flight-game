@@ -37,10 +37,23 @@ export function applyShot(state, shot, seed) {
   if (shot === 'cover') {
     // Ring dead ahead, runway island just beyond it, volcano on the left.
     const ring = state.rings.find((r) => r.z > 1200 && Math.abs(r.x) < 120) || state.rings[2];
+    // Only this ring is the course ring, so it draws orange and reads as
+    // the target dead ahead.
+    for (const r of state.rings) r.course = false;
     ring.x = 10;
     ring.y = 185;
     ring.course = true;
-    placeBeforeRing(state, state.rings.indexOf(ring), 300);
+    placeBeforeRing(state, state.rings.indexOf(ring), 200);
+    // Clear the flight corridor of islands so the plane and the ring read
+    // against sky and sea instead of overlapping a dome. The range is long
+    // because a tall far island (Derawan, 1.5 km past the ring) still fills
+    // the centre of the frame; the islands stay visible off to the sides.
+    for (const isl of state.islands) {
+      if (Math.abs(isl.x - ring.x) < 350 && isl.z > state.z - 100 && isl.z < ring.z + 2500) {
+        isl.x += (isl.x >= ring.x ? 450 : -450);
+      }
+    }
+    state.verticalSpeed = 1.2;
     state.ringsTotal = 6;
     state.ringsHit = 2;
     state.mission.text = 'Terbang melewati 6 cincin!';
@@ -49,6 +62,8 @@ export function applyShot(state, shot, seed) {
     state.messageUntil = 99;
   } else if (shot === 'rings') {
     const ring = state.rings[4];
+    // Only this ring is the course ring, so it draws orange.
+    for (const r of state.rings) r.course = false;
     ring.x = 60;
     ring.y = 200;
     ring.course = true;
@@ -60,6 +75,13 @@ export function applyShot(state, shot, seed) {
     state.pitch = 2;
     state.speed = 235;
     state.throttle = 0.7;
+    state.verticalSpeed = 0.8;
+    // Push the nearest island ahead off the flight line so the banked turn
+    // and the ring read against sky and sea, not a dome filling the frame.
+    const near = state.islands
+      .filter((i) => i.z > state.z)
+      .sort((a, b) => a.z - b.z)[0];
+    if (near) near.x += (near.x >= state.x ? 600 : -600);
     state.ringsTotal = 6;
     state.ringsHit = 3;
     state.mission.text = 'Terbang melewati 6 cincin!';
@@ -67,19 +89,35 @@ export function applyShot(state, shot, seed) {
     state.message = 'Cincin 4/6!';
     state.messageUntil = 99;
   } else if (shot === 'landing') {
-    const island = state.islands.find((i) => i.runway) || state.islands[1];
+    // Prefer a green (non-volcano) runway island; plane on the centreline
+    // ~12 m above the threshold, runway converging to bottom-centre, AGL
+    // readout and approach lights visible.
+    const island = state.islands.find((i) => i.runway && i.kind !== 'volcano')
+      || state.islands.find((i) => i.runway) || state.islands[1];
+    // Straighten the runway to due north so the strip projects dead centre
+    // in the frame instead of sliding off to one side with the island's
+    // random runway heading.
+    island.runwayHeading = 0;
     state.mission = {
       type: 'land', name: 'Mendarat di Pulau', island,
       text: 'Mendarat di landasan ' + island.name + '!',
     };
-    state.x = island.x - 30;
-    state.y = island.height * 0.92 + 55;
-    state.z = island.z - 420;
+    const hdg = (island.runwayHeading * Math.PI) / 180;
+    const sinH = Math.sin(hdg), cosH = Math.cos(hdg);
+    const groundY = island.height * 0.92;
+    const nearX = island.x - 130 * sinH;
+    const nearZ = island.z - 130 * cosH;
+    // 120 m before the threshold, 18 m above the strip: the strip reads
+    // big and centred, with the approach lights leading into the frame.
+    state.x = nearX - 120 * sinH;
+    state.z = nearZ - 120 * cosH;
+    state.y = groundY + 18;
     state.heading = island.runwayHeading;
     state.pitch = -4;
-    state.bank = 3;
+    state.bank = 0;
     state.speed = 165;
     state.throttle = 0.3;
+    state.verticalSpeed = -3.0;
     state.fuel = 34;
     state.missionTimeLimit = 180;
     state.message = 'Final approach — turunkan kecepatan!';
@@ -93,18 +131,27 @@ export function applyShot(state, shot, seed) {
       type: 'cargo', name: 'Antar Kargo', dropZone: zone, count: 1,
       text: 'Jatuhkan kargo di zona kuning (tekan Spasi)!',
     };
-    state.x = zone.x + 30;
-    state.y = zone.y + 60;
-    state.z = zone.z - 520;
-    state.heading = 4;
+    // Plane dead on the zone line and closer, so the yellow ring reads big
+    // and centred ahead; a crate is already falling toward the zone.
+    state.x = zone.x;
+    state.y = zone.y + 40;
+    state.z = zone.z - 300;
+    state.heading = 0;
     state.pitch = -2;
-    state.bank = 8;
+    state.bank = 0;
     state.speed = 190;
     state.throttle = 0.55;
+    state.verticalSpeed = -1.5;
     state.fuel = 52;
     state.missionTimeLimit = 130;
     state.message = 'Zona drop di depan — siap-siap!';
     state.messageUntil = 99;
     state.dusk = true;
+    state.cargoFalling = { x: zone.x, y: zone.y + 45, z: zone.z - 40, vy: 12, landed: false };
+    // Move any runway island near the zone out of frame so its strip does
+    // not float on the slope beside the drop.
+    for (const isl of state.islands) {
+      if (isl.runway && Math.abs(isl.z - zone.z) < 900) isl.x += 520;
+    }
   }
 }
