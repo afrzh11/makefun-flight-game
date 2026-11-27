@@ -2,6 +2,7 @@
 // and clouds in a pseudo-3D chase view. One shared projector turns world
 // metres into screen pixels; everything far-to-near so near things overlap far.
 import { WORLD } from './state.js';
+import { terrainHeight } from './world.js';
 
 const DEG = Math.PI / 180;
 
@@ -115,23 +116,30 @@ function drawIslandShape(ctx, p, island, time) {
   const topH = island.height * p.s;
   const baseY = p.y;
   if (baseW < 6) return;
+  // Reef ring: a pale turquoise halo in the water just outside the sand.
+  if (island.kind === 'sand') {
+    ctx.fillStyle = 'rgba(120,220,210,0.35)';
+    ctx.beginPath();
+    ctx.ellipse(p.x, baseY, baseW * 0.58, Math.max(3, baseW * 0.09), 0, 0, Math.PI * 2);
+    ctx.fill();
+  }
   // Sand ring at the waterline.
   ctx.fillStyle = '#e8d29a';
   ctx.beginPath();
   ctx.ellipse(p.x, baseY, baseW * 0.52, Math.max(3, baseW * 0.07), 0, 0, Math.PI * 2);
   ctx.fill();
-  // Green dome / volcano cone.
-  // Rounded dome for every island; a volcano gets a dark crater cap on top
-  // instead of a bare brown cone, so near islands still read as islands.
+  // Green dome / volcano cone. The peak is offset per island so the domes
+  // are not all the same symmetric silhouette.
+  const pk = (island.peak || 0) * baseW;
   ctx.beginPath();
   ctx.moveTo(p.x - baseW * 0.48, baseY);
   ctx.bezierCurveTo(
     p.x - baseW * 0.42, baseY - topH * 0.9,
-    p.x - baseW * 0.16, baseY - topH * 1.05,
-    p.x, baseY - topH,
+    p.x - baseW * 0.16 + pk * 0.7, baseY - topH * 1.05,
+    p.x + pk, baseY - topH,
   );
   ctx.bezierCurveTo(
-    p.x + baseW * 0.16, baseY - topH * 1.05,
+    p.x + baseW * 0.16 + pk * 0.7, baseY - topH * 1.05,
     p.x + baseW * 0.42, baseY - topH * 0.9,
     p.x + baseW * 0.48, baseY,
   );
@@ -152,25 +160,28 @@ function drawIslandShape(ctx, p, island, time) {
   }
   ctx.fillStyle = grad;
   ctx.fill();
-  // Volcano crater cap: a dark ellipse at the peak.
+  // Volcano crater: a small dark ring at the peak (stroke only, never a
+  // pale plate — the old pale cap read as a giant white disc on near islands).
   if (island.kind === 'volcano') {
-    ctx.fillStyle = '#4a382c';
+    ctx.strokeStyle = '#3a2c22';
+    ctx.lineWidth = Math.max(2, topH * 0.05);
     ctx.beginPath();
-    ctx.ellipse(p.x - baseW * 0.01, baseY - topH + Math.max(2, topH * 0.06), baseW * 0.085, Math.max(2, topH * 0.09), 0, 0, Math.PI * 2);
-    ctx.fill();
+    ctx.ellipse(p.x - baseW * 0.01 + pk, baseY - topH + Math.max(2, topH * 0.06), baseW * 0.045, Math.max(2, topH * 0.05), 0, 0, Math.PI * 2);
+    ctx.stroke();
   }
-  // Volcano crater smoke.
+  // Volcano smoke: soft grey puffs, low alpha, drifting up — not hard circles.
   if (island.kind === 'volcano') {
     const puff = (Math.sin(time * 0.9 + island.seed) + 1) / 2;
-    ctx.fillStyle = 'rgba(240,240,240,0.75)';
-    ctx.beginPath();
-    ctx.arc(p.x - baseW * 0.01, baseY - topH - 8 - puff * 14, Math.max(4, baseW * 0.05), 0, Math.PI * 2);
-    ctx.arc(p.x + baseW * 0.05, baseY - topH - 16 - puff * 18, Math.max(3, baseW * 0.035), 0, Math.PI * 2);
-    ctx.fill();
-    ctx.fillStyle = '#e8e0d0';
-    ctx.beginPath();
-    ctx.ellipse(p.x - baseW * 0.01, baseY - topH + 2, baseW * 0.09, Math.max(2, topH * 0.08), 0, 0, Math.PI * 2);
-    ctx.fill();
+    ctx.fillStyle = 'rgba(235,235,235,0.32)';
+    for (let i = 0; i < 3; i++) {
+      ctx.beginPath();
+      ctx.ellipse(
+        p.x - baseW * 0.01 + pk + (i - 1) * baseW * 0.03,
+        baseY - topH - 10 - i * 12 - puff * 10,
+        Math.max(3, baseW * 0.035), Math.max(2, baseW * 0.02), 0, 0, Math.PI * 2,
+      );
+      ctx.fill();
+    }
   }
   // Palm dots on near islands.
   if (baseW > 90) {
@@ -179,7 +190,7 @@ function drawIslandShape(ctx, p, island, time) {
       const px = p.x + ((i * 37 + island.seed) % 100) / 100 * baseW * 0.7 - baseW * 0.35;
       const py = baseY - topH * (0.25 + ((i * 53 + island.seed) % 60) / 100 * 0.5);
       ctx.beginPath();
-      ctx.arc(px, py, 2.5, 0, Math.PI * 2);
+      ctx.arc(px, py, 3, 0, Math.PI * 2);
       ctx.fill();
     }
   }
@@ -193,11 +204,11 @@ export function drawIslands(ctx, proj, state, time) {
     const p = proj.project(island.x, 0, island.z);
     if (!p) continue;
     drawIslandShape(ctx, p, island, time);
-    if (island.runway) drawRunway(ctx, proj, island);
+    if (island.runway) drawRunway(ctx, proj, state, island);
   }
 }
 
-function drawRunway(ctx, proj, island) {
+function drawRunway(ctx, proj, state, island) {
   // Skip runways on islands right beside or behind the camera: their strip
   // would slash across the bottom of the frame and read as a road on water.
   if (island.z - proj.camZ < 220) return;
@@ -239,6 +250,81 @@ function drawRunway(ctx, proj, island) {
     ctx.stroke();
   }
   ctx.setLineDash([]);
+
+  // Extended centreline + approach lights: a faint dashed line hugging the
+  // terrain for 400 m before the near threshold, so the final approach
+  // reads from distance and the player can correct lateral drift.
+  const nearX = island.x - halfL * sinH;
+  const nearZ = island.z - halfL * cosH;
+  ctx.strokeStyle = 'rgba(255,255,255,0.4)';
+  ctx.lineWidth = 1.5;
+  ctx.setLineDash([8, 14]);
+  ctx.beginPath();
+  let started = false;
+  for (let d = 0; d <= 400; d += 50) {
+    const ex = nearX - d * sinH;
+    const ez = nearZ - d * cosH;
+    const q = proj.project(ex, terrainHeight(state, ex, ez) + 2, ez);
+    if (!q) continue;
+    if (!started) { ctx.moveTo(q.x, q.y); started = true; }
+    else ctx.lineTo(q.x, q.y);
+  }
+  ctx.stroke();
+  ctx.setLineDash([]);
+  // Approach lights: small white dots either side of the extended line.
+  ctx.fillStyle = 'rgba(255,255,255,0.85)';
+  for (let d = 60; d <= 380; d += 80) {
+    const lx = nearX - d * sinH;
+    const lz = nearZ - d * cosH;
+    const ly = terrainHeight(state, lx, lz) + 2;
+    for (const side of [-1, 1]) {
+      const q = proj.project(lx + side * 10 * cosH, ly, lz - side * 10 * sinH);
+      if (!q) continue;
+      ctx.beginPath();
+      ctx.arc(q.x, q.y, 2.5, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+}
+
+export function drawDust(ctx, proj, state) {
+  const dust = state.dust;
+  if (!dust || state.elapsed >= dust.until) return;
+  const age = 1 - (dust.until - state.elapsed); // 0 at touchdown, 1 when gone
+  const p = proj.project(dust.x, terrainHeight(state, dust.x, dust.z) + 2, dust.z);
+  if (!p) return;
+  const r = Math.max(4, (10 + age * 34) * p.s);
+  ctx.fillStyle = 'rgba(220,200,160,' + (0.45 * (1 - age)).toFixed(2) + ')';
+  ctx.beginPath();
+  ctx.ellipse(p.x, p.y - r * 0.2, r, r * 0.45, 0, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+export function drawCargo(ctx, proj, state) {
+  const crate = state.cargoFalling;
+  if (!crate) return;
+  const p = proj.project(crate.x, crate.y, crate.z);
+  if (!p) return;
+  const s = Math.max(3, p.s * 7);
+  // Parachute canopy above the crate.
+  ctx.fillStyle = 'rgba(255,210,62,0.9)';
+  ctx.beginPath();
+  ctx.arc(p.x, p.y - s * 1.6, s * 1.1, Math.PI, 0);
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(255,255,255,0.7)';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(p.x - s * 1.1, p.y - s * 1.6);
+  ctx.lineTo(p.x - s * 0.4, p.y - s * 0.2);
+  ctx.moveTo(p.x + s * 1.1, p.y - s * 1.6);
+  ctx.lineTo(p.x + s * 0.4, p.y - s * 0.2);
+  ctx.stroke();
+  // The crate itself.
+  ctx.fillStyle = '#8a5a2e';
+  ctx.fillRect(p.x - s * 0.5, p.y - s * 0.5, s, s);
+  ctx.strokeStyle = '#5d3a1a';
+  ctx.lineWidth = 1;
+  ctx.strokeRect(p.x - s * 0.5, p.y - s * 0.5, s, s);
 }
 
 export function drawRings(ctx, proj, state) {
