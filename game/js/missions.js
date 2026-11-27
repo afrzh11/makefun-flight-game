@@ -2,6 +2,7 @@
 // harder each level — ring runs, island landings and cargo drops. Fuel and
 // damage turn each sortie into decisions, not just steering.
 import { WORLD, showMessage, addScore } from './state.js';
+import { terrainHeight } from './world.js';
 
 const MISSION_NAMES = {
   rings: 'Cincin Langit',
@@ -16,7 +17,11 @@ export function startMission(state, index) {
   state.missionTime = 0;
   state.dropDone = false;
   state.cargoDropped = false;
+  state.cargoFalling = null;
   state.landed = false;
+  // Every third level is a dusk leg, so the sunset palette from the cargo
+  // screenshot shows up in real play too, not only in staged shots.
+  state.dusk = (level % 3 === 0);
 
   if (type === 'rings') {
     const count = 5 + level;
@@ -81,6 +86,17 @@ export function updateMissions(state, dt) {
     }
   }
 
+  // --- Falling cargo crate ---------------------------------------------------
+  // A dropped crate falls at ~12 m/s and stays on the ground as a marker
+  // until the mission advances, so the drop is visible instead of just a toast.
+  if (state.cargoFalling && !state.cargoFalling.landed) {
+    state.cargoFalling.y -= state.cargoFalling.vy * dt;
+    if (state.cargoFalling.y <= terrainHeight(state, state.cargoFalling.x, state.cargoFalling.z) + 1) {
+      state.cargoFalling.y = terrainHeight(state, state.cargoFalling.x, state.cargoFalling.z) + 1;
+      state.cargoFalling.landed = true;
+    }
+  }
+
   // --- Cargo drop ------------------------------------------------------------
   if (mission.type === 'cargo' && state.cargoDropped && !state.dropDone) {
     state.dropDone = true;
@@ -88,8 +104,16 @@ export function updateMissions(state, dt) {
     if (zone) {
       const dx = state.x - zone.x;
       const dy = state.y - zone.y;
-      const dist = Math.sqrt(dx * dx + dy * dy);
-      if (dist < 90) {
+      const dz = state.z - zone.z;
+      // Score the drop in 3D: a drop 500 m early must not count just
+      // because x/y line up.
+      const dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
+      if (Math.abs(dz) > 250) {
+        showMessage(state, 'Terlalu dini — tunggu sampai di atas zona.', 2.5);
+        state.cargoDropped = false;
+        state.dropDone = false;
+        state.cargoFalling = null;
+      } else if (dist < 90) {
         addScore(state, 500, 'Kargo mendarat tepat sasaran! +500');
         mission.done = true;
       } else {
@@ -121,5 +145,6 @@ export function dropCargo(state) {
   if (state.mission.type !== 'cargo') return;
   if (state.cargoDropped) return;
   state.cargoDropped = true;
+  state.cargoFalling = { x: state.x, y: state.y - 4, z: state.z, vy: 12, landed: false };
   showMessage(state, 'Kargo dijatuhkan!', 1.5);
 }
