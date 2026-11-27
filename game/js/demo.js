@@ -37,8 +37,8 @@ export function applyShot(state, shot, seed) {
   if (shot === 'cover') {
     // Ring dead ahead, runway island just beyond it, volcano on the left.
     const ring = state.rings.find((r) => r.z > 1200 && Math.abs(r.x) < 120) || state.rings[2];
-    // Only this ring is the course ring, so it draws orange and reads as
-    // the target dead ahead.
+    // Only this ring is the course ring, so it draws bright cyan with a
+    // glow and reads as the target dead ahead; the other rings stay faint.
     for (const r of state.rings) r.course = false;
     ring.x = 10;
     ring.y = 185;
@@ -53,6 +53,10 @@ export function applyShot(state, shot, seed) {
         isl.x += (isl.x >= ring.x ? 450 : -450);
       }
     }
+    // A runway island just beyond the ring, off to the right, so the cover
+    // shows a runway as well as the ring (criterion 1: runway or ring ahead).
+    const rw = state.islands.find((i) => i.runway && i.z > ring.z + 1500);
+    if (rw) { rw.x = ring.x + 380; rw.z = ring.z + 650; }
     state.verticalSpeed = 1.2;
     state.ringsTotal = 6;
     state.ringsHit = 2;
@@ -62,7 +66,7 @@ export function applyShot(state, shot, seed) {
     state.messageUntil = 99;
   } else if (shot === 'rings') {
     const ring = state.rings[4];
-    // Only this ring is the course ring, so it draws orange.
+    // Only this ring is the course ring, so it draws bright cyan.
     for (const r of state.rings) r.course = false;
     ring.x = 60;
     ring.y = 200;
@@ -89,29 +93,27 @@ export function applyShot(state, shot, seed) {
     state.message = 'Cincin 4/6!';
     state.messageUntil = 99;
   } else if (shot === 'landing') {
-    // Prefer a green (non-volcano) runway island; plane on the centreline
-    // ~12 m above the threshold, runway converging to bottom-centre, AGL
-    // readout and approach lights visible.
+    // Prefer a green (non-volcano) runway island. Plane on the centreline
+    // on final approach, far out and high enough that the strip reads big
+    // and the approach lights lead into the frame: the 120 m / 18 m
+    // staging hid the strip on the dome top and read as a plane sitting
+    // on grass. The island keeps its own runway heading (within +/-12 deg),
+    // which leaves the strip slightly diagonal and the island centred.
     const island = state.islands.find((i) => i.runway && i.kind !== 'volcano')
       || state.islands.find((i) => i.runway) || state.islands[1];
-    // Straighten the runway to due north so the strip projects dead centre
-    // in the frame instead of sliding off to one side with the island's
-    // random runway heading.
-    island.runwayHeading = 0;
     state.mission = {
       type: 'land', name: 'Mendarat di Pulau', island,
       text: 'Mendarat di landasan ' + island.name + '!',
     };
+    const groundY = island.height * 0.92;
+    // 420 m out on the runway centreline (not just beside the island),
+    // 55 m above the strip: the strip reads big and the approach lights
+    // lead into the frame, and the HUD reports 0 m off the centreline.
     const hdg = (island.runwayHeading * Math.PI) / 180;
     const sinH = Math.sin(hdg), cosH = Math.cos(hdg);
-    const groundY = island.height * 0.92;
-    const nearX = island.x - 130 * sinH;
-    const nearZ = island.z - 130 * cosH;
-    // 120 m before the threshold, 18 m above the strip: the strip reads
-    // big and centred, with the approach lights leading into the frame.
-    state.x = nearX - 120 * sinH;
-    state.z = nearZ - 120 * cosH;
-    state.y = groundY + 18;
+    state.x = island.x - 420 * sinH;
+    state.z = island.z - 420 * cosH;
+    state.y = groundY + 55;
     state.heading = island.runwayHeading;
     state.pitch = -4;
     state.bank = 0;
@@ -148,10 +150,12 @@ export function applyShot(state, shot, seed) {
     state.messageUntil = 99;
     state.dusk = true;
     state.cargoFalling = { x: zone.x, y: zone.y + 45, z: zone.z - 40, vy: 12, landed: false };
-    // Move any runway island near the zone out of frame so its strip does
-    // not float on the slope beside the drop.
+    // Push any runway island near the zone far off to the side so its
+    // strip cannot float on a slope beside the drop (+520 was not enough).
     for (const isl of state.islands) {
-      if (isl.runway && Math.abs(isl.z - zone.z) < 900) isl.x += 520;
+      if (isl.runway && Math.abs(isl.z - zone.z) < 900) {
+        isl.x += (isl.x >= 0 ? 1400 : -1400);
+      }
     }
   }
 }
