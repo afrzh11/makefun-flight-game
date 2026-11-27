@@ -37,6 +37,7 @@ export function createGameState() {
     ringsHit: 0,
     ringsTotal: 0,
     landed: false,
+    onGround: false, // true while rolling on a runway after a landing
     // Flow
     screen: 'title', // title | flying | paused | crashed | outoffuel | complete | landed
     message: '',
@@ -53,6 +54,8 @@ export function createGameState() {
     landingQuality: '',
     dropDone: false,
     cargoDropped: false,
+    cargoFalling: null, // {x, y, z, vy, landed} while a dropped crate falls
+    dust: null, // {x, z, until} dust puff kicked up by a touchdown
     // Demo hooks
     shot: null,
     seed: 1,
