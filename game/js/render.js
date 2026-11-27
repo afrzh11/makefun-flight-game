@@ -1,9 +1,13 @@
 // Scene rendering for Nusantara Skies: draws the world (sky, sea, clouds,
 // islands, rings), the aircraft, the HUD and the title / pause / end
 // screens, in that order, every frame.
-import { createProjector, drawSky, drawSea, drawClouds, drawIslands, drawRings } from './terrain.js';
+import { createProjector, drawSky, drawSea, drawClouds, drawIslands, drawRings, drawCargo, drawDust } from './terrain.js';
 import { drawAircraft } from './aircraft.js';
 import { drawHUD } from './hud.js';
+
+// Crash shake bookkeeping: when the screen first becomes 'crashed'.
+let lastScreen = null;
+let crashStartTime = 0;
 
 function drawTitle(ctx, w, h, state, time) {
   // A living backdrop: the world scrolls gently behind the title.
@@ -39,6 +43,8 @@ function drawWorld(ctx, w, h, state, time) {
   drawSea(ctx, w, h, proj, state, time, dusk);
   drawIslands(ctx, proj, state, time);
   drawRings(ctx, proj, state);
+  drawCargo(ctx, proj, state);
+  drawDust(ctx, proj, state);
   drawAircraft(ctx, w, h, state, time);
 }
 
@@ -63,10 +69,27 @@ function drawEndScreen(ctx, w, h, state, title, lines) {
 export function renderFrame(ctx, w, h, state, time) {
   ctx.clearRect(0, 0, w, h);
   if (state.screen === 'title') {
+    lastScreen = state.screen;
     drawTitle(ctx, w, h, state, time);
     return;
   }
+  // Crash shake: the world jolts for ~0.4 s after the plane goes down,
+  // while the HUD stays steady.
+  let shakeX = 0, shakeY = 0;
+  if (state.screen === 'crashed') {
+    if (lastScreen !== 'crashed') crashStartTime = time;
+    const age = time - crashStartTime;
+    if (age < 0.4) {
+      const mag = 6 * (1 - age / 0.4);
+      shakeX = (Math.random() - 0.5) * 2 * mag;
+      shakeY = (Math.random() - 0.5) * 2 * mag;
+    }
+  }
+  lastScreen = state.screen;
+  ctx.save();
+  ctx.translate(shakeX, shakeY);
   drawWorld(ctx, w, h, state, time);
+  ctx.restore();
   if (state.screen === 'paused') {
     ctx.fillStyle = 'rgba(6,18,30,0.5)';
     ctx.fillRect(0, 0, w, h);
